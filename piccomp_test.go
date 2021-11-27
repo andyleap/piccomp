@@ -26,10 +26,12 @@ func TestLoop(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+	log.Println("decomp")
 	err = trip(t, "test.piccomp", "test.piccomp.png", png.Encode)
 	if err != nil {
 		t.Error(err)
 	}
+	t.Error("ugh")
 }
 
 func trip(t *testing.T, from, to string, encode func(io.Writer, image.Image) error) error {

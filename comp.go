@@ -6,20 +6,25 @@ import (
 	"image"
 	"image/color"
 	"io"
+	"math/bits"
+
+	"github.com/andyleap/piccomp/huffman"
 )
 
 type tag uint8
 
 const (
-	Plain tag = iota << 4
-	PlainUp
-	RunS
-	RunL
-	DeltaS
-	DeltaM
-	DeltaUS
-	DeltaUM
+	Delta tag = iota
+	DeltaUp
 	Lookup
+	Run
+)
+
+const (
+	ClassTag byte = iota
+	ClassRun
+	ClassLookup
+	ClassDelta
 )
 
 func Save(w io.Writer, i image.Image) error {
@@ -39,11 +44,12 @@ func Save(w io.Writer, i image.Image) error {
 	}
 	m := color.NRGBAModel
 
+	hw := huffman.NewWriter()
 	dx := i.Bounds().Min.X
 	dy := i.Bounds().Min.Y
 	prior := []byte{0, 0, 0, 0}
 	run := 0
-	ru := newByteRU(0x80)
+	ru := newByteRU(0x100)
 	for y := 0; y < hgt; y++ {
 		for x := 0; x < wid; x++ {
 			c := m.Convert(i.At(x+dx, y+dy)).(color.NRGBA)
@@ -52,33 +58,15 @@ func Save(w io.Writer, i image.Image) error {
 				run++
 				continue
 			}
+
 			if run > 0 {
 				run--
-				if run <= 0x0F {
-					_, err = w.Write([]byte{byte(byte(RunS) | byte(run))})
-					if err != nil {
-						return err
-					}
-				} else {
-					max := 0
-					trun := run >> 4
-					for trun > 0 {
-						max++
-						trun >>= 7
-					}
-					b := []byte{}
-					b = append(b, byte(RunL)|byte((run>>uint(max*7))&0x0F))
-					for max > 0 {
-						max--
-						b = append(b, byte(run>>uint(max*7))&0x7F)
-						if max > 0 {
-							b[len(b)-1] |= 0x80
-						}
-					}
-					_, err = w.Write(b)
-					if err != nil {
-						return err
-					}
+
+				hw.Write(ClassTag, byte(Run))
+				b := (bits.Len(uint(run)) + 7) / 8
+				hw.Write(ClassRun, byte(b))
+				for i := 0; i < b; i++ {
+					hw.Write(ClassRun, byte(run>>((b-i-1)*8)))
 				}
 				run = 0
 			}
@@ -87,10 +75,8 @@ func Save(w io.Writer, i image.Image) error {
 
 			if entry != -1 {
 				entry--
-				_, err = w.Write([]byte{byte(byte(Lookup) | byte(entry))})
-				if err != nil {
-					return err
-				}
+				hw.Write(ClassTag, byte(Lookup))
+				hw.Write(ClassLookup, byte(entry))
 				prior = cur
 				continue
 			}
@@ -131,126 +117,35 @@ func Save(w io.Writer, i image.Image) error {
 				}
 			}
 
-			if maxDiff <= 3 && (nDiff >= 1 && nUpDiff >= 1) {
-				d := uint16(0)
-				for i, v := range cur {
-					d <<= 3
-					d |= uint16((v - prior[i]) & 0x07)
-				}
-				_, err = w.Write([]byte{byte(DeltaS) | byte(d>>8), byte(d)})
-				if err != nil {
-					return err
-				}
-				prior = cur
-				continue
-			}
-
-			if maxUpDiff <= 3 && (nDiff >= 1 && nUpDiff >= 1) {
-				d := uint16(0)
-				for i, v := range cur {
-					d <<= 3
-					d |= uint16((v - up[i]) & 0x07)
-				}
-				_, err = w.Write([]byte{byte(DeltaUS) | byte(d>>8), byte(d)})
-				if err != nil {
-					return err
-				}
-				prior = cur
-				continue
-			}
-
-			if maxDiff <= 0xF && (nDiff >= 2 && nUpDiff >= 2) {
-				d := uint32(0)
-				for i, v := range cur {
-					d <<= 5
-					d |= uint32((v - prior[i]) & 0x1F)
-				}
-				_, err = w.Write([]byte{byte(DeltaM) | byte(d>>16), byte(d >> 8), byte(d)})
-				if err != nil {
-					return err
-				}
-				prior = cur
-				continue
-			}
-
-			if maxUpDiff <= 0xF && (nDiff >= 2 && nUpDiff >= 2) {
-				d := uint32(0)
-				for i, v := range cur {
-					d <<= 5
-					d |= uint32((v - up[i]) & 0x1F)
-				}
-				_, err = w.Write([]byte{byte(DeltaUM) | byte(d>>16), byte(d >> 8), byte(d)})
-				if err != nil {
-					return err
-				}
-				prior = cur
-				continue
-			}
-
-			b := []byte{0}
-			t := Plain
+			t := Delta
 
 			if nUpDiff < nDiff {
 				prior = up
-				t = PlainUp
+				t = DeltaUp
+			} else if nUpDiff == nDiff && maxUpDiff < maxDiff {
+				prior = up
+				t = DeltaUp
 			}
 
-			if cur[0] != prior[0] {
-				b = append(b, cur[0])
-				t |= 1 << 3
-			}
-			if cur[1] != prior[1] {
-				b = append(b, cur[1])
-				t |= 1 << 2
-			}
-			if cur[2] != prior[2] {
-				b = append(b, cur[2])
-				t |= 1 << 1
-			}
-			if cur[3] != prior[3] {
-				b = append(b, cur[3])
-				t |= 1 << 0
-			}
-			b[0] = byte(t)
-			_, err = w.Write(b)
-			if err != nil {
-				return err
+			hw.Write(ClassTag, byte(t))
+
+			for i, v := range cur {
+				d := v - prior[i]
+				hw.Write(ClassDelta, byte(d))
 			}
 			prior = cur
 		}
 	}
 	if run > 0 {
-		run--
-		if run <= 0xF {
-			_, err = w.Write([]byte{byte(byte(RunS) | byte(run))})
-			if err != nil {
-				return err
-			}
-		} else {
-			max := 0
-			trun := run >> 4
-			for trun > 0 {
-				max++
-				trun >>= 7
-			}
-			b := []byte{}
-			b = append(b, byte(RunL)|byte((run>>uint(max*7))&0x0F))
-			for max > 0 {
-				max--
-				b = append(b, byte(run>>uint(max*7))&0x7F)
-				if max > 0 {
-					b[len(b)-1] |= 0x80
-				}
-			}
-			_, err = w.Write(b)
-			if err != nil {
-				return err
-			}
+		hw.Write(ClassTag, byte(Run))
+		b := (bits.Len(uint(run)) + 7) / 8
+		hw.Write(ClassRun, byte(b))
+		for i := 0; i < b; i++ {
+			hw.Write(ClassRun, byte(run>>(i*8)))
 		}
-		run = 0
 	}
 
-	return nil
+	return hw.Dump(w)
 }
 
 type byteRU struct {
