@@ -26,18 +26,22 @@ func main() {
 	}
 	wg := sync.WaitGroup{}
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprint(tw, "name\traw (kb)\tpng (kb)\tpng %\tpiccomp (kb)\tpiccomp %\n")
 	for _, f := range files {
 		if f.IsDir() {
 			continue
 		}
 		f := f
 		wg.Add(1)
+
 		go func() {
 			defer wg.Done()
 			i, err := toBuffer(filepath.Join(os.Args[1], f.Name()))
 			if err != nil {
 				log.Println(err)
 			}
+
+			raw := i.Bounds().Dx() * i.Bounds().Dy() * 4
 
 			pngLen, err := measure(i, png.Encode)
 			if err != nil {
@@ -48,7 +52,7 @@ func main() {
 				log.Println(err)
 			}
 
-			fmt.Fprintf(tw, "%s\t%v\t%v\t%.2f\t%v\t%.2f\n", f.Name(), f.Size()/1024, pngLen/1024, float64(pngLen)/float64(f.Size())*100, piccompLen/1024, float64(piccompLen)/float64(f.Size())*100)
+			fmt.Fprintf(tw, "%s\t%v\t%v\t%.2f\t%v\t%.2f\n", f.Name(), raw/1024, pngLen/1024, float64(pngLen)/float64(raw)*100, piccompLen/1024, float64(piccompLen)/float64(raw)*100)
 		}()
 	}
 	wg.Wait()

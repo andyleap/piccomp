@@ -77,6 +77,42 @@ func Decode(r io.Reader) (image.Image, error) {
 				c.B += uint8((d << 22) >> 27)
 				c.A += uint8((d << 27) >> 27)
 				ru.CheckAdd([]byte{c.R, c.G, c.B, c.A})
+			case DeltaUS:
+				c = color.NRGBA{}
+				if y > 0 {
+					c = i.At(x, y-1).(color.NRGBA)
+				}
+				b, err := br.ReadByte()
+				if err != nil {
+					return i, err
+				}
+				d := (int16(t&0xF) << 8) | int16(b)
+				c.R += uint8((d << 4) >> 13)
+				c.G += uint8((d << 7) >> 13)
+				c.B += uint8((d << 10) >> 13)
+				c.A += uint8((d << 13) >> 13)
+				ru.CheckAdd([]byte{c.R, c.G, c.B, c.A})
+			case DeltaUM:
+				c = color.NRGBA{}
+				if y > 0 {
+					c = i.At(x, y-1).(color.NRGBA)
+				}
+				d := int32(t&0xF) << 16
+				b, err := br.ReadByte()
+				if err != nil {
+					return i, err
+				}
+				d |= int32(b) << 8
+				b, err = br.ReadByte()
+				if err != nil {
+					return i, err
+				}
+				d |= int32(b)
+				c.R += uint8((d << 12) >> 27)
+				c.G += uint8((d << 17) >> 27)
+				c.B += uint8((d << 22) >> 27)
+				c.A += uint8((d << 27) >> 27)
+				ru.CheckAdd([]byte{c.R, c.G, c.B, c.A})
 			case RunS:
 				run = int(t & 0x0F)
 			case RunL:
@@ -92,6 +128,12 @@ func Decode(r io.Reader) (image.Image, error) {
 						break
 					}
 				}
+			case PlainUp:
+				c = color.NRGBA{}
+				if y > 0 {
+					c = i.At(x, y-1).(color.NRGBA)
+				}
+				fallthrough
 			case Plain:
 				if t&(1<<3) != 0 {
 					c.R, err = br.ReadByte()

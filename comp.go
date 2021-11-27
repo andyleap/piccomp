@@ -12,13 +12,13 @@ type tag uint8
 
 const (
 	Plain tag = iota << 4
+	PlainUp
 	RunS
 	RunL
 	DeltaS
 	DeltaM
-	_
-	_
-	_
+	DeltaUS
+	DeltaUM
 	Lookup
 )
 
@@ -95,6 +95,12 @@ func Save(w io.Writer, i image.Image) error {
 				continue
 			}
 
+			up := []byte{0, 0, 0, 0}
+			if y > 0 {
+				c := m.Convert(i.At(x+dx, y+dy-1)).(color.NRGBA)
+				up = []byte{c.R, c.G, c.B, c.A}
+			}
+
 			maxDiff := 0
 			nDiff := 0
 			for i, v := range cur {
@@ -110,7 +116,22 @@ func Save(w io.Writer, i image.Image) error {
 				}
 			}
 
-			if maxDiff <= 3 && nDiff >= 1 {
+			maxUpDiff := 0
+			nUpDiff := 0
+			for i, v := range cur {
+				if v != up[i] {
+					nUpDiff++
+				}
+				d := int(v) - int(up[i])
+				if d < 0 {
+					d = -d - 1
+				}
+				if d > maxUpDiff {
+					maxUpDiff = d
+				}
+			}
+
+			if maxDiff <= 3 && (nDiff >= 1 && nUpDiff >= 1) {
 				d := uint16(0)
 				for i, v := range cur {
 					d <<= 3
@@ -124,7 +145,21 @@ func Save(w io.Writer, i image.Image) error {
 				continue
 			}
 
-			if maxDiff <= 0xF && nDiff >= 2 {
+			if maxUpDiff <= 3 && (nDiff >= 1 && nUpDiff >= 1) {
+				d := uint16(0)
+				for i, v := range cur {
+					d <<= 3
+					d |= uint16((v - up[i]) & 0x07)
+				}
+				_, err = w.Write([]byte{byte(DeltaUS) | byte(d>>8), byte(d)})
+				if err != nil {
+					return err
+				}
+				prior = cur
+				continue
+			}
+
+			if maxDiff <= 0xF && (nDiff >= 2 && nUpDiff >= 2) {
 				d := uint32(0)
 				for i, v := range cur {
 					d <<= 5
@@ -138,8 +173,27 @@ func Save(w io.Writer, i image.Image) error {
 				continue
 			}
 
+			if maxUpDiff <= 0xF && (nDiff >= 2 && nUpDiff >= 2) {
+				d := uint32(0)
+				for i, v := range cur {
+					d <<= 5
+					d |= uint32((v - up[i]) & 0x1F)
+				}
+				_, err = w.Write([]byte{byte(DeltaUM) | byte(d>>16), byte(d >> 8), byte(d)})
+				if err != nil {
+					return err
+				}
+				prior = cur
+				continue
+			}
+
 			b := []byte{0}
 			t := Plain
+
+			if nUpDiff < nDiff {
+				prior = up
+				t = PlainUp
+			}
 
 			if cur[0] != prior[0] {
 				b = append(b, cur[0])
