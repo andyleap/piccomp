@@ -1,13 +1,15 @@
 package main
 
 import (
+	"fmt"
 	"image"
 	"io"
 	"io/ioutil"
 	"log"
 	"os"
-	"strings"
+	"path/filepath"
 	"sync"
+	"text/tabwriter"
 
 	"image/png"
 
@@ -18,20 +20,21 @@ import (
 
 func main() {
 
-	files, err := ioutil.ReadDir("../testdata")
+	files, err := ioutil.ReadDir(os.Args[1])
 	if err != nil {
 		log.Fatal(err)
 	}
 	wg := sync.WaitGroup{}
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	for _, f := range files {
-		if !strings.HasSuffix(f.Name(), ".ppm") {
+		if f.IsDir() {
 			continue
 		}
 		f := f
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			i, err := toBuffer("../testdata/" + f.Name())
+			i, err := toBuffer(filepath.Join(os.Args[1], f.Name()))
 			if err != nil {
 				log.Println(err)
 			}
@@ -45,10 +48,11 @@ func main() {
 				log.Println(err)
 			}
 
-			log.Println(f.Name(), f.Size(), pngLen, float64(pngLen)/float64(f.Size()), piccompLen, float64(piccompLen)/float64(f.Size()))
+			fmt.Fprintf(tw, "%s\t%v\t%v\t%.2f\t%v\t%.2f\n", f.Name(), f.Size()/1024, pngLen/1024, float64(pngLen)/float64(f.Size())*100, piccompLen/1024, float64(piccompLen)/float64(f.Size())*100)
 		}()
 	}
 	wg.Wait()
+	tw.Flush()
 }
 
 func toBuffer(from string) (image.Image, error) {

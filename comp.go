@@ -12,7 +12,7 @@ type tag uint8
 
 const (
 	Plain tag = iota << 4
-	Run
+	RunS
 	RunL
 	DeltaS
 	DeltaM
@@ -54,22 +54,31 @@ func Save(w io.Writer, i image.Image) error {
 			}
 			if run > 0 {
 				run--
-				if run <= 0xF {
-					_, err = w.Write([]byte{byte(byte(Run) | byte(run))})
+				if run <= 0x0F {
+					_, err = w.Write([]byte{byte(byte(RunS) | byte(run))})
+					if err != nil {
+						return err
+					}
 				} else {
 					max := 0
-					trun := run
+					trun := run >> 4
 					for trun > 0 {
 						max++
-						trun >>= 8
+						trun >>= 7
 					}
 					b := []byte{}
-					b = append(b, byte(RunL)|byte(max))
+					b = append(b, byte(RunL)|byte((run>>uint(max*7))&0x0F))
 					for max > 0 {
 						max--
-						b = append(b, byte(run>>uint(max*8)))
+						b = append(b, byte(run>>uint(max*7))&0x7F)
+						if max > 0 {
+							b[len(b)-1] |= 0x80
+						}
 					}
 					_, err = w.Write(b)
+					if err != nil {
+						return err
+					}
 				}
 				run = 0
 			}
@@ -79,12 +88,19 @@ func Save(w io.Writer, i image.Image) error {
 			if entry != -1 {
 				entry--
 				_, err = w.Write([]byte{byte(byte(Lookup) | byte(entry))})
+				if err != nil {
+					return err
+				}
 				prior = cur
 				continue
 			}
 
 			maxDiff := 0
+			nDiff := 0
 			for i, v := range cur {
+				if v != prior[i] {
+					nDiff++
+				}
 				d := int(v) - int(prior[i])
 				if d < 0 {
 					d = -d - 1
@@ -94,24 +110,30 @@ func Save(w io.Writer, i image.Image) error {
 				}
 			}
 
-			if maxDiff <= 3 {
+			if maxDiff <= 3 && nDiff >= 1 {
 				d := uint16(0)
 				for i, v := range cur {
 					d <<= 3
 					d |= uint16((v - prior[i]) & 0x07)
 				}
 				_, err = w.Write([]byte{byte(DeltaS) | byte(d>>8), byte(d)})
+				if err != nil {
+					return err
+				}
 				prior = cur
 				continue
 			}
 
-			if maxDiff <= 0xF {
+			if maxDiff <= 0xF && nDiff >= 2 {
 				d := uint32(0)
 				for i, v := range cur {
 					d <<= 5
 					d |= uint32((v - prior[i]) & 0x1F)
 				}
 				_, err = w.Write([]byte{byte(DeltaM) | byte(d>>16), byte(d >> 8), byte(d)})
+				if err != nil {
+					return err
+				}
 				prior = cur
 				continue
 			}
@@ -146,21 +168,30 @@ func Save(w io.Writer, i image.Image) error {
 	if run > 0 {
 		run--
 		if run <= 0xF {
-			_, err = w.Write([]byte{byte(byte(Run) | byte(run))})
+			_, err = w.Write([]byte{byte(byte(RunS) | byte(run))})
+			if err != nil {
+				return err
+			}
 		} else {
 			max := 0
-			trun := run
+			trun := run >> 4
 			for trun > 0 {
 				max++
-				trun >>= 8
+				trun >>= 7
 			}
 			b := []byte{}
-			b = append(b, byte(RunL)|byte(max))
+			b = append(b, byte(RunL)|byte((run>>uint(max*7))&0x0F))
 			for max > 0 {
 				max--
-				b = append(b, byte(run>>uint(max*8)))
+				b = append(b, byte(run>>uint(max*7))&0x7F)
+				if max > 0 {
+					b[len(b)-1] |= 0x80
+				}
 			}
 			_, err = w.Write(b)
+			if err != nil {
+				return err
+			}
 		}
 		run = 0
 	}

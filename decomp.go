@@ -46,13 +46,13 @@ func Decode(r io.Reader) (image.Image, error) {
 			}
 			t, err := br.ReadByte()
 			if err != nil {
-				return nil, err
+				return i, err
 			}
 			switch tag(t & 0xF0) {
 			case DeltaS:
 				b, err := br.ReadByte()
 				if err != nil {
-					return nil, err
+					return i, err
 				}
 				d := (int16(t&0xF) << 8) | int16(b)
 				c.R += uint8((d << 4) >> 13)
@@ -64,12 +64,12 @@ func Decode(r io.Reader) (image.Image, error) {
 				d := int32(t&0xF) << 16
 				b, err := br.ReadByte()
 				if err != nil {
-					return nil, err
+					return i, err
 				}
 				d |= int32(b) << 8
 				b, err = br.ReadByte()
 				if err != nil {
-					return nil, err
+					return i, err
 				}
 				d |= int32(b)
 				c.R += uint8((d << 12) >> 27)
@@ -77,49 +77,50 @@ func Decode(r io.Reader) (image.Image, error) {
 				c.B += uint8((d << 22) >> 27)
 				c.A += uint8((d << 27) >> 27)
 				ru.CheckAdd([]byte{c.R, c.G, c.B, c.A})
-			case Run:
+			case RunS:
 				run = int(t & 0x0F)
 			case RunL:
-				n := int(t & 0x0F)
-				run = 0
-				for n > 0 {
+				run = int(t & 0x0F)
+				for {
 					b, err := br.ReadByte()
 					if err != nil {
-						return nil, err
+						return i, err
 					}
-					run <<= 8
-					run += int(b)
-					n--
+					run <<= 7
+					run |= int(b) & 0x7F
+					if b&0x80 == 0 {
+						break
+					}
 				}
 			case Plain:
 				if t&(1<<3) != 0 {
 					c.R, err = br.ReadByte()
 					if err != nil {
-						return nil, err
+						return i, err
 					}
 				}
 				if t&(1<<2) != 0 {
 					c.G, err = br.ReadByte()
 					if err != nil {
-						return nil, err
+						return i, err
 					}
 				}
 				if t&(1<<1) != 0 {
 					c.B, err = br.ReadByte()
 					if err != nil {
-						return nil, err
+						return i, err
 					}
 				}
 				if t&(1<<0) != 0 {
 					c.A, err = br.ReadByte()
 					if err != nil {
-						return nil, err
+						return i, err
 					}
 				}
 				ru.CheckAdd([]byte{c.R, c.G, c.B, c.A})
 			default:
 				if t&(1<<7) != 1<<7 {
-					return nil, image.ErrFormat
+					return i, image.ErrFormat
 				}
 				ba := ru.Get(int(t&0x7F) + 1)
 				c = color.NRGBA{ba[0], ba[1], ba[2], ba[3]}

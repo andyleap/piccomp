@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"image"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
-	"strings"
 	"testing"
 
 	"image/png"
@@ -16,7 +14,7 @@ import (
 )
 
 func TestSave(t *testing.T) {
-	err := trip(t, "artificial.png", "artificial.piccomp", Save)
+	err := trip(t, "test.png", "test.piccomp", Save)
 	if err != nil {
 		t.Error(err)
 	}
@@ -24,43 +22,14 @@ func TestSave(t *testing.T) {
 
 func TestLoop(t *testing.T) {
 
-	err := trip(t, "artificial.png", "artificial.piccomp", Save)
+	err := trip(t, "test.png", "test.piccomp", Save)
 	if err != nil {
 		t.Error(err)
 	}
-	err = trip(t, "artificial.piccomp", "artificial.piccomp.png", png.Encode)
+	err = trip(t, "test.piccomp", "test.piccomp.png", png.Encode)
 	if err != nil {
 		t.Error(err)
 	}
-	t.Error("ugh")
-}
-
-func TestAll(t *testing.T) {
-	files, err := ioutil.ReadDir("testdata")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range files {
-		f := f
-		if !strings.HasSuffix(f.Name(), ".ppm") {
-			continue
-		}
-		t.Run(f.Name(), func(t *testing.T) {
-			t.Parallel()
-
-			pngBuf, err := toBuffer(t, "testdata/"+f.Name(), png.Encode)
-			if err != nil {
-				t.Error(err)
-			}
-			piccompBuf, err := toBuffer(t, "testdata/"+f.Name(), Save)
-			if err != nil {
-				t.Error(err)
-			}
-
-			t.Log(f.Size(), len(pngBuf), len(piccompBuf))
-		})
-	}
-	t.Error("test")
 }
 
 func trip(t *testing.T, from, to string, encode func(io.Writer, image.Image) error) error {

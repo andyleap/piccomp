@@ -1,3 +1,6 @@
 testdata
 artificial.*
 *.exe
+tester/tester
+*.piccomp
+*.piccomp.png
