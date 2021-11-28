@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"text/tabwriter"
 
@@ -27,6 +28,8 @@ func main() {
 	wg := sync.WaitGroup{}
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprint(tw, "name\traw (kb)\tpng (kb)\tpng %\tpiccomp (kb)\tpiccomp %\n")
+	data := []string{}
+	in := make(chan string)
 	for _, f := range files {
 		if f.IsDir() {
 			continue
@@ -52,10 +55,20 @@ func main() {
 				log.Println(err)
 			}
 
-			fmt.Fprintf(tw, "%s\t%v\t%v\t%.2f\t%v\t%.2f\n", f.Name(), raw/1024, pngLen/1024, float64(pngLen)/float64(raw)*100, piccompLen/1024, float64(piccompLen)/float64(raw)*100)
+			in <- fmt.Sprintf("%s\t%v\t%v\t%.2f\t%v\t%.2f\n", f.Name(), raw/1024, pngLen/1024, float64(pngLen)/float64(raw)*100, piccompLen/1024, float64(piccompLen)/float64(raw)*100)
 		}()
 	}
-	wg.Wait()
+	go func() {
+		defer close(in)
+		wg.Wait()
+	}()
+	for d := range in {
+		data = append(data, d)
+	}
+	sort.Strings(data)
+	for _, d := range data {
+		fmt.Fprint(tw, d)
+	}
 	tw.Flush()
 }
 
