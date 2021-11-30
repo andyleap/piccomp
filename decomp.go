@@ -65,17 +65,17 @@ func Decode(r io.Reader) (image.Image, error) {
 					return nil, err
 				}
 				c.R += dR
-				dG, err := hr.Read(ClassDelta)
+				dG, err := hr.Read(ClassDelta + 1)
 				if err != nil {
 					return nil, err
 				}
 				c.G += dG
-				dB, err := hr.Read(ClassDelta)
+				dB, err := hr.Read(ClassDelta + 2)
 				if err != nil {
 					return nil, err
 				}
 				c.B += dB
-				dA, err := hr.Read(ClassDelta)
+				dA, err := hr.Read(ClassDelta + 3)
 				if err != nil {
 					return nil, err
 				}
@@ -92,13 +92,13 @@ func Decode(r io.Reader) (image.Image, error) {
 				c.B = b[2]
 				c.A = b[3]
 			case Run:
-				l, err := hr.Read(ClassRun)
+				l, err := hr.Read(ClassBCount)
 				if err != nil {
 					return nil, err
 				}
 				run = 0
 				for i := 0; i < int(l); i++ {
-					b, err := hr.Read(ClassRun)
+					b, err := hr.Read(ClassRun + byte(i))
 					if err != nil {
 						return nil, err
 					}

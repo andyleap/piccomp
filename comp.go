@@ -22,9 +22,13 @@ const (
 
 const (
 	ClassTag byte = iota
-	ClassRun
+	ClassBCount
 	ClassLookup
-	ClassDelta
+	ClassDelta // R
+	_          // G
+	_          // B
+	_          // A
+	ClassRun
 )
 
 func Save(w io.Writer, i image.Image) error {
@@ -64,9 +68,9 @@ func Save(w io.Writer, i image.Image) error {
 
 				hw.Write(ClassTag, byte(Run))
 				b := (bits.Len(uint(run)) + 7) / 8
-				hw.Write(ClassRun, byte(b))
+				hw.Write(ClassBCount, byte(b))
 				for i := 0; i < b; i++ {
-					hw.Write(ClassRun, byte(run>>((b-i-1)*8)))
+					hw.Write(ClassRun+byte(i), byte(run>>((b-i-1)*8)))
 				}
 				run = 0
 			}
@@ -131,7 +135,7 @@ func Save(w io.Writer, i image.Image) error {
 
 			for i, v := range cur {
 				d := v - prior[i]
-				hw.Write(ClassDelta, byte(d))
+				hw.Write(ClassDelta+byte(i), byte(d))
 			}
 			prior = cur
 		}

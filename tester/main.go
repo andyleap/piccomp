@@ -1,75 +1,90 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"image"
 	"io"
-	"io/ioutil"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
-	"sort"
 	"sync"
-	"text/tabwriter"
-
-	"image/png"
 
 	"github.com/andyleap/piccomp"
 
-	_ "github.com/lmittmann/ppm"
+	_ "image/png"
 )
 
-func main() {
+type Results struct {
+	Sizes map[string]int
+}
 
-	files, err := ioutil.ReadDir(os.Args[1])
-	if err != nil {
-		log.Fatal(err)
+func main() {
+	dir := "."
+	if len(os.Args) > 1 {
+		dir = os.Args[1]
 	}
 	wg := sync.WaitGroup{}
-	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprint(tw, "name\traw (kb)\tpng (kb)\tpng %\tpiccomp (kb)\tpiccomp %\n")
-	data := []string{}
-	in := make(chan string)
-	for _, f := range files {
-		if f.IsDir() {
-			continue
+	in := make(chan struct {
+		k string
+		v int
+	})
+	data := map[string]int{}
+	count := 0
+	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if d.IsDir() {
+			return nil
 		}
-		f := f
 		wg.Add(1)
-
-		go func() {
+		count++
+		go func(path string) {
 			defer wg.Done()
-			i, err := toBuffer(filepath.Join(os.Args[1], f.Name()))
+			i, err := toBuffer(path)
 			if err != nil {
 				log.Println(err)
 			}
 
-			raw := i.Bounds().Dx() * i.Bounds().Dy() * 4
-
-			pngLen, err := measure(i, png.Encode)
-			if err != nil {
-				log.Println(err)
-			}
 			piccompLen, err := measure(i, piccomp.Save)
 			if err != nil {
 				log.Println(err)
 			}
 
-			in <- fmt.Sprintf("%s\t%v\t%v\t%.2f\t%v\t%.2f\n", f.Name(), raw/1024, pngLen/1024, float64(pngLen)/float64(raw)*100, piccompLen/1024, float64(piccompLen)/float64(raw)*100)
-		}()
-	}
+			name, err := filepath.Rel(dir, path)
+			if err != nil {
+				log.Println(err)
+			}
+
+			in <- struct {
+				k string
+				v int
+			}{name, piccompLen}
+		}(path)
+		return nil
+	})
 	go func() {
 		defer close(in)
 		wg.Wait()
 	}()
+	done := 0
+
+	numLen := len(fmt.Sprintf("%v", count))
+	fmtString := fmt.Sprintf("\r%%%dd/%%%dd", numLen, numLen)
+
 	for d := range in {
-		data = append(data, d)
+		done++
+		fmt.Fprintf(os.Stderr, fmtString, done, count)
+		data[d.k] = d.v
 	}
-	sort.Strings(data)
-	for _, d := range data {
-		fmt.Fprint(tw, d)
+	fmt.Fprintf(os.Stderr, "\n")
+	results := Results{
+		Sizes: data,
 	}
-	tw.Flush()
+	buf, err := json.Marshal(results)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(string(buf))
 }
 
 func toBuffer(from string) (image.Image, error) {

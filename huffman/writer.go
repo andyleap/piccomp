@@ -67,6 +67,12 @@ func (w *Writer) Dump(wr io.Writer) error {
 			return err
 		}
 	}
+	/*for c, code := range codes {
+		log.Println("class", c)
+		for v, bits := range code {
+			log.Println(v, bits)
+		}
+	}*/
 	err := bw.writeBits(int(255), 8)
 	if err != nil {
 		return err

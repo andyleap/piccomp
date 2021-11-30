@@ -48,3 +48,31 @@ func TestLoop(t *testing.T) {
 		}
 	}
 }
+
+func TestSingleValue(t *testing.T) {
+	data := []byte{
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	}
+	hw := NewWriter()
+	for _, v := range data {
+		hw.Write(0, v)
+	}
+	buf := &bytes.Buffer{}
+	err := hw.Dump(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log(buf.Bytes())
+
+	bufr := bytes.NewReader(buf.Bytes())
+	hr := NewReader(bufr)
+	for v := range data {
+		r, err := hr.Read(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r != data[v] {
+			t.Fatalf("%d != %d", r, data[v])
+		}
+	}
+}
